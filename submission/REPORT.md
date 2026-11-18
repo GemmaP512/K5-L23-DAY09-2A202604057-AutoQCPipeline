@@ -37,7 +37,7 @@ Chạy đối chứng `python -m pipeline.run --budget 0 --reports work/rep_nb -
 Hai hạn chế có số liệu: (1) checker bỏ sót 4/5 lỗi box lỏng trên calib tại conf=0,6 (recall 20%); (2) phash vẫn bỏ sót 1/6 ảnh gần trùng trên calib, nên không thể kết luận đã loại hết ảnh trùng biến đổi mạnh. Ngoài ra FALSE_POS có 11 FP với 5 TP (precision 31%): model không thấy vật không có nghĩa nhãn người sai. Các ví dụ này chứng minh cần người duyệt và không thể coi 0 lỗi cú pháp là dữ liệu hoàn toàn sạch.
 
 ## 5. Train: raw vs clean (tùy chọn)
-**Chưa chạy**: hiện hoàn thành pipeline và calibration, chưa thực hiện thí nghiệm Colab. Không có kết quả mAP hoặc độ lệch chuẩn giữa seed, nên chưa thể kết luận clean tốt hơn raw. Nếu train sau, dùng cùng cấu hình và hai seed cho hai biến thể, báo chênh lệch cùng độ nhiễu; chỉ dùng test để đánh giá cuối.
+**Chưa chạy**: bỏ qua phần train theo lựa chọn của học viên. Colab báo không thể kết nối GPU do giới hạn sử dụng; notebook cũng chưa vượt qua bước kiểm tra manifest, nên chưa có lượt train hoàn tất hoặc kết quả để báo cáo. Không có kết quả mAP hoặc độ lệch chuẩn giữa seed, nên chưa thể kết luận clean tốt hơn raw. Nếu train sau, dùng cùng cấu hình và hai seed cho hai biến thể, báo chênh lệch cùng độ nhiễu; chỉ dùng test để đánh giá cuối.
 
 ## 6. Quyết định và ghi chú AI
 Giữ quyết định **Hold**, chỉ sử dụng bản xuất để thử nghiệm. Cần người xác minh các cảnh báo còn lại và các cặp ảnh gần trùng; việc phát hành phải đáp ứng quy tắc dự án. Không thay ngân sách 80 hay ngưỡng Hold 10% để làm đẹp kết quả.
