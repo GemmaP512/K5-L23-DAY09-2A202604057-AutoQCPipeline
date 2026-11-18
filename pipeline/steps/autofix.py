@@ -35,5 +35,62 @@ from ..common import ERROR, parse_yolo_line  # noqa: F401
 
 
 def fix(ds, issues, cfg):
-    # TODO
-    raise NotImplementedError("autofix chưa làm")
+    out = []
+    groups = defaultdict(list)
+    for issue in issues:
+        if issue.severity == ERROR:
+            groups[issue.image].append(issue)
+    def log(stem, line, action, before, after):
+        out.append(dict(image=stem, line=line, action=action, before=before, after=after))
+    for stem, items in groups.items():
+        codes = {i.code for i in items}
+        if 'BAD_CLASS_NAME' in codes:
+            data = yaml.safe_load(ds.yaml_path.read_text()) if ds.yaml_path.exists() else {}
+            data = data or {}
+            before = data.get('names')
+            if ds.yaml_names() != dict(enumerate(cfg['classes'])):
+                data['names'] = cfg['classes']
+                ds.yaml_path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding='utf-8')
+                log(stem, None, 'rename_classes', str(before), str(data['names']))
+        if any(c.startswith('DUP_IMAGE_') or c in {'LEAK_TEST', 'CORRUPT_IMAGE', 'BAD_SIZE'} for c in codes):
+            image = ds.image_path(stem)
+            label = ds.label_path(stem)
+            if image or label.exists():
+                if image:
+                    image.unlink()
+                label.unlink(missing_ok=True)
+                log(stem, None, 'remove_image', stem, '')
+            continue
+        if 'MISSING_LABEL_FILE' in codes and not ds.label_path(stem).exists():
+            log(stem, None, 'needs_label', '(không có file)', 'chuyển người gán')
+        path = ds.label_path(stem)
+        if not path.exists():
+            continue
+        by_line = defaultdict(set)
+        for i in items:
+            by_line[i.line].add(i.code)
+        result = []
+        changed = False
+        for line, text in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+            codes = by_line[line]
+            action = None
+            after = text
+            if codes & {'BAD_FORMAT', 'BAD_CLASS_ID', 'BOX_ZERO', 'DUP_BOX'}:
+                action, after = 'drop_line', ''
+            elif 'BOX_OUT_OF_IMAGE' in codes:
+                cls, x, y, w, h = parse_yolo_line(text)
+                left, right = max(0, x-w/2), min(1, x+w/2)
+                top, bottom = max(0, y-h/2), min(1, y+h/2)
+                if right <= left or bottom <= top:
+                    action, after = 'drop_line', ''
+                else:
+                    after = f'{cls} {(left+right)/2:.12g} {(top+bottom)/2:.12g} {right-left:.12g} {bottom-top:.12g}'
+                    action = 'clip_box'
+            if action:
+                changed = True
+                log(stem, line, action, text, after)
+            if action != 'drop_line':
+                result.append(after)
+        if changed:
+            path.write_text('\n'.join(result) + ('\n' if result else ''), encoding='utf-8')
+    return out

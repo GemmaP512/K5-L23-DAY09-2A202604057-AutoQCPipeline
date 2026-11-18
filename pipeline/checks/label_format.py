@@ -25,5 +25,35 @@ from ..common import ERROR, WARN, Issue, iou_xywh, parse_yolo_line  # noqa: F401
 
 
 def run(ds, cfg):
-    # TODO: duyệt từng file nhãn, từng dòng
-    raise NotImplementedError("check label_format chưa làm")
+    out = []
+    c = cfg['label_format']
+    for path in ds.label_files():
+        stem = path.stem
+        previous = []
+        for line, text in ds.read_label_lines(stem) or []:
+            def emit(code, severity=ERROR, **extra):
+                out.append(Issue('label_format', severity, code, stem, code, line, extra))
+            try:
+                cls, x, y, w, h = parse_yolo_line(text)
+            except (ValueError, OverflowError):
+                emit('BAD_FORMAT')
+                continue
+            if not 0 <= cls < len(ds.classes):
+                emit('BAD_CLASS_ID')
+                continue
+            if w <= 0 or h <= 0:
+                emit('BOX_ZERO')
+                continue
+            box = (x, y, w, h)
+            overflow = max(0, w/2-x, h/2-y, x+w/2-1, y+h/2-1)
+            if overflow > c['overflow_tol']:
+                emit('BOX_OUT_OF_IMAGE', overflow=overflow)
+            if any(cls == old[0] and iou_xywh(box, old[1:]) > c['dup_box_iou'] for old in previous):
+                emit('DUP_BOX')
+            previous.append((cls, *box))
+            size = ds.image_size(stem)
+            if size and min(w*size[0], h*size[1]) < c['min_box_px']:
+                emit('BOX_TINY', WARN)
+            if w*h > c['max_box_frac']:
+                emit('BOX_HUGE', WARN)
+    return out

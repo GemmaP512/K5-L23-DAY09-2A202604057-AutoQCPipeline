@@ -40,5 +40,39 @@ from ..model_cache import get_preds  # noqa: F401
 
 
 def run(ds, cfg, preds=None):
-    # TODO
-    raise NotImplementedError("check second_opinion chưa làm")
+    if preds is None:
+        preds = get_preds(ds, cfg, 'checker')
+    c = cfg['second_opinion']
+    out = []
+    for path in ds.image_files():
+        stem = path.stem
+        lines = ds.read_label_lines(stem)
+        size = ds.image_size(stem)
+        if stem not in preds or lines is None or size is None:
+            continue
+        labels = ds.valid_boxes(stem)
+        def emit(code, line=None, **extra):
+            out.append(Issue('second_opinion', WARN, code, stem, code, line, extra))
+        for cls, conf, *box in preds[stem]:
+            if conf < c['conf'] or box[2]*size[0]*box[3]*size[1] < c['min_area_px']:
+                continue
+            candidates = [(b[0], iou_xywh(box, b[1:])) for b in labels]
+            candidates = [(k, i) for k, i in candidates if i >= c['iou_missing']]
+            same = [i for k, i in candidates if k == cls]
+            if not candidates:
+                emit('POSSIBLE_MISSING', conf=conf)
+            elif same:
+                if max(same) < c['iou_loose']:
+                    emit('POSSIBLE_LOOSE_BOX', conf=conf, iou=max(same))
+            elif max(i for _, i in candidates) >= c['iou_match']:
+                emit('POSSIBLE_WRONG_CLASS', conf=conf, iou=max(i for _, i in candidates))
+        for line, text in lines:
+            try:
+                b = parse_yolo_line(text)
+            except (ValueError, OverflowError):
+                continue
+            if not 0 <= b[0] < len(ds.classes):
+                continue
+            if all(iou_xywh(b[1:], r[2:]) < c['iou_missing'] for r in preds[stem] if r[1] >= c['fp_conf']):
+                emit('POSSIBLE_FALSE_POS', line=line)
+    return out
